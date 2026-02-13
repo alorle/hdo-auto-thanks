@@ -7,6 +7,11 @@ type TorrentProperties = {
   comment: string;
 };
 
+type TorrentInfo = {
+  hash: string;
+  name: string;
+};
+
 type QBittorrentConfig = {
   baseUrl: string;
   username: string;
@@ -100,5 +105,25 @@ export class QBittorrentClient {
       }
     }
     throw new Error(`Torrent ${hash} comment still empty after ${maxAttempts} attempts.`);
+  }
+
+  async listTorrents(): Promise<TorrentInfo[]> {
+    if (!this.sid) await this.login();
+
+    const res = await fetch(`${this.config.baseUrl}/api/v2/torrents/info`, {
+      headers: { Cookie: `SID=${this.sid}` },
+    });
+
+    if (res.status === 403) {
+      this.sid = null;
+      await this.login();
+      return this.listTorrents();
+    }
+
+    if (!res.ok) {
+      throw new Error(`qBittorrent API error: ${res.status} ${res.statusText}`);
+    }
+
+    return (await res.json()) as TorrentInfo[];
   }
 }

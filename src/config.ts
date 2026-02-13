@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 export type SiteConfig = {
   name: string;
   baseUrl: string;
@@ -22,5 +24,17 @@ export function getSiteCredentials(site: SiteConfig): { username: string; passwo
   return {
     username: getRequiredEnv(`${site.envPrefix}_USERNAME`),
     password: getRequiredEnv(`${site.envPrefix}_PASSWORD`),
+  };
+}
+
+export function getCacheDir(): string {
+  return process.env.CACHE_DIR ?? join(import.meta.dirname, "..", ".cache");
+}
+
+export function getScanConfig(): { enabled: boolean; hour: number; onStart: boolean } {
+  return {
+    enabled: process.env.SCAN_ENABLED !== "false",
+    hour: Number(process.env.SCAN_HOUR ?? "3"),
+    onStart: process.env.SCAN_ON_START === "true",
   };
 }

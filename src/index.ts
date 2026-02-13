@@ -1,8 +1,11 @@
-import { SITES, getSiteCredentials } from "./config.js";
+import { SITES, getSiteCredentials, getScanConfig } from "./config.js";
 import { log } from "./log.js";
 import { getPage, closeAll } from "./browser.js";
 import { thankTorrent } from "./thanks.js";
 import { startServer } from "./webhook-server.js";
+import { QBittorrentClient } from "./qbittorrent.js";
+import { scanAllTorrents } from "./scanner.js";
+import { scheduleDaily } from "./scheduler.js";
 
 function mask(value: string | undefined): string {
   if (!value) return "(not set)";
@@ -22,6 +25,9 @@ function logConfig(): void {
     log("config", `  ${prefix}_PASSWORD   = ${mask(process.env[`${prefix}_PASSWORD`])}`);
   }
   log("config", `  CACHE_DIR        = ${process.env.CACHE_DIR ?? "(not set)"}`);
+  log("config", `  SCAN_ENABLED     = ${process.env.SCAN_ENABLED ?? "(not set, default: true)"}`);
+  log("config", `  SCAN_HOUR        = ${process.env.SCAN_HOUR ?? "(not set, default: 3)"}`);
+  log("config", `  SCAN_ON_START    = ${process.env.SCAN_ON_START ?? "(not set, default: false)"}`);
 }
 
 async function runCli(siteKey: string, torrentIds: string[]): Promise<void> {
@@ -61,6 +67,27 @@ async function main(): Promise<void> {
   if (command === "serve") {
     const port = Number(process.env.WEBHOOK_PORT ?? "3000");
     await startServer(port);
+
+    const qbClient = QBittorrentClient.fromEnv();
+    const scanConfig = getScanConfig();
+    if (scanConfig.enabled) {
+      scheduleDaily(scanConfig.hour, () => scanAllTorrents(qbClient));
+      if (scanConfig.onStart) {
+        scanAllTorrents(qbClient).catch((err) =>
+          log("scanner", `Initial scan failed: ${err}`),
+        );
+      }
+    }
+    return;
+  }
+
+  if (command === "scan") {
+    const qbClient = QBittorrentClient.fromEnv();
+    try {
+      await scanAllTorrents(qbClient);
+    } finally {
+      await closeAll();
+    }
     return;
   }
 
@@ -72,7 +99,8 @@ async function main(): Promise<void> {
 
   console.log("Usage:");
   console.log("  node src/index.ts <site> <id1> <id2> ...   Thank specific torrents");
-  console.log("  node src/index.ts serve                    Start webhook server");
+  console.log("  node src/index.ts serve                    Start webhook server + daily scan");
+  console.log("  node src/index.ts scan                     Run scan once and exit");
   console.log(`\nAvailable sites: ${Object.keys(SITES).join(", ")}`);
   console.log("\nEnvironment variables:");
   console.log("  HDO_USERNAME, HDO_PASSWORD     HD-Olimpo credentials");
@@ -82,6 +110,9 @@ async function main(): Promise<void> {
   console.log("  QBIT_PASSWORD                  qBittorrent WebUI password");
   console.log("  WEBHOOK_PORT                   Webhook server port (default: 3000)");
   console.log("  CACHE_DIR                      Browser session cache directory");
+  console.log("  SCAN_ENABLED                   Enable daily scan (default: true)");
+  console.log("  SCAN_HOUR                      Hour to run daily scan, 0-23 (default: 3)");
+  console.log("  SCAN_ON_START                  Run scan on startup (default: false)");
 }
 
 main().catch((error: unknown) => {
