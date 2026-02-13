@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.cache
+.vscode
+.claude
+.playwright-mcp
+.ralph-tui
+tasks
+.DS_Store
+Thumbs.db
