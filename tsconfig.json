@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    // Base (all projects)
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+
+    // Strictness
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Transpilation with TypeScript (Node)
+    "module": "NodeNext",
+    "outDir": "dist",
+    "sourceMap": true,
+
+    // Non-DOM environment
+    "lib": ["es2022"]
+  }
+}
