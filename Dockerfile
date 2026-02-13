@@ -36,8 +36,8 @@ RUN useradd --create-home --shell /bin/bash appuser \
 ENV CACHE_DIR=/app/.cache
 ENV WEBHOOK_PORT=3000
 
-EXPOSE $WEBHOOK_PORT
 VOLUME /app/.cache
+EXPOSE 3000
 
 USER appuser
 
