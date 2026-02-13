@@ -243,5 +243,6 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/windows,linux,macos,visualstudiocode,direnv,dotenv,node
 
 !.envrc
+.cache/
 .ralph-tui/
 tasks/

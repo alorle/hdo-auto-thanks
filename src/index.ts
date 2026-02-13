@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { chromium } from "playwright";
 import type { Page } from "playwright";
 
@@ -114,9 +115,10 @@ async function main(): Promise<void> {
 
   log(`Processing ${torrentIds.length} torrent(s)...`);
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const cacheDir = process.env.CACHE_DIR ?? join(import.meta.dirname, "..", ".cache");
+  const sessionsDir = join(cacheDir, "sessions", siteKey);
+  const context = await chromium.launchPersistentContext(sessionsDir, { headless: true });
+  const page = context.pages()[0] ?? await context.newPage();
 
   try {
     for (const torrentId of torrentIds) {
@@ -132,7 +134,6 @@ async function main(): Promise<void> {
     }
   } finally {
     await context.close();
-    await browser.close();
   }
 
   log("Done.");
