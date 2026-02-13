@@ -39,6 +39,14 @@ export class QBittorrentClient {
       }),
     });
 
+    const body = await res.text();
+    if (!res.ok) {
+      throw new Error(`qBittorrent login failed: HTTP ${res.status} ${res.statusText}`);
+    }
+    if (body !== "Ok.") {
+      throw new Error(`qBittorrent login failed: ${body} (check credentials or IP ban)`);
+    }
+
     const cookie = res.headers.get("set-cookie");
     const sidMatch = cookie?.match(/SID=([^;]+)/);
     if (!sidMatch?.[1]) {
