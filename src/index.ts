@@ -4,6 +4,26 @@ import { getPage, closeAll } from "./browser.js";
 import { thankTorrent } from "./thanks.js";
 import { startServer } from "./webhook-server.js";
 
+function mask(value: string | undefined): string {
+  if (!value) return "(not set)";
+  if (value.length <= 4) return "****";
+  return value.slice(0, 2) + "****" + value.slice(-2);
+}
+
+function logConfig(): void {
+  log("config", "Loaded environment config:");
+  log("config", `  WEBHOOK_PORT     = ${process.env.WEBHOOK_PORT ?? "(not set, default: 3000)"}`);
+  log("config", `  QBIT_URL         = ${process.env.QBIT_URL ?? "(not set)"}`);
+  log("config", `  QBIT_USERNAME    = ${process.env.QBIT_USERNAME ?? "(not set)"}`);
+  log("config", `  QBIT_PASSWORD    = ${mask(process.env.QBIT_PASSWORD)}`);
+  for (const site of Object.values(SITES)) {
+    const prefix = site.envPrefix;
+    log("config", `  ${prefix}_USERNAME   = ${process.env[`${prefix}_USERNAME`] ?? "(not set)"}`);
+    log("config", `  ${prefix}_PASSWORD   = ${mask(process.env[`${prefix}_PASSWORD`])}`);
+  }
+  log("config", `  CACHE_DIR        = ${process.env.CACHE_DIR ?? "(not set)"}`);
+}
+
 async function runCli(siteKey: string, torrentIds: string[]): Promise<void> {
   const site = SITES[siteKey];
   if (!site) {
@@ -35,6 +55,7 @@ async function runCli(siteKey: string, torrentIds: string[]): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  logConfig();
   const [command, ...rest] = process.argv.slice(2);
 
   if (command === "serve") {
