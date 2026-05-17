@@ -17,6 +17,7 @@ function logConfig(): void {
   log("config", "Loaded environment config:");
   log("config", `  WEBHOOK_PORT     = ${process.env.WEBHOOK_PORT ?? "(not set, default: 3000)"}`);
   log("config", `  QBIT_URL         = ${process.env.QBIT_URL ?? "(not set)"}`);
+  log("config", `  QBIT_API_KEY     = ${mask(process.env.QBIT_API_KEY)}`);
   log("config", `  QBIT_USERNAME    = ${process.env.QBIT_USERNAME ?? "(not set)"}`);
   log("config", `  QBIT_PASSWORD    = ${mask(process.env.QBIT_PASSWORD)}`);
   for (const site of Object.values(SITES)) {
@@ -106,8 +107,9 @@ async function main(): Promise<void> {
   console.log("  HDO_USERNAME, HDO_PASSWORD     HD-Olimpo credentials");
   console.log("  F1_USERNAME, F1_PASSWORD       F1Carreras credentials");
   console.log("  QBIT_URL                       qBittorrent WebUI URL");
-  console.log("  QBIT_USERNAME                  qBittorrent WebUI username");
-  console.log("  QBIT_PASSWORD                  qBittorrent WebUI password");
+  console.log("  QBIT_API_KEY                   qBittorrent API key (v5.2.0+, preferred)");
+  console.log("  QBIT_USERNAME                  qBittorrent WebUI username (if no API key)");
+  console.log("  QBIT_PASSWORD                  qBittorrent WebUI password (if no API key)");
   console.log("  WEBHOOK_PORT                   Webhook server port (default: 3000)");
   console.log("  CACHE_DIR                      Browser session cache directory");
   console.log("  SCAN_ENABLED                   Enable daily scan (default: true)");

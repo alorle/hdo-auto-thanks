@@ -12,10 +12,13 @@ type TorrentInfo = {
   name: string;
 };
 
+type QBittorrentCredentials =
+  | { mode: "apikey"; apiKey: string }
+  | { mode: "cookie"; username: string; password: string };
+
 type QBittorrentConfig = {
   baseUrl: string;
-  username: string;
-  password: string;
+  credentials: QBittorrentCredentials;
 };
 
 export class QBittorrentClient {
@@ -27,21 +30,55 @@ export class QBittorrentClient {
   }
 
   static fromEnv(): QBittorrentClient {
+    const baseUrl = getRequiredEnv("QBIT_URL");
+    const apiKey = process.env.QBIT_API_KEY;
+
+    if (apiKey) {
+      log(PREFIX, "Using API key authentication (v5.2.0+).");
+      return new QBittorrentClient({
+        baseUrl,
+        credentials: { mode: "apikey", apiKey },
+      });
+    }
+
     return new QBittorrentClient({
-      baseUrl: getRequiredEnv("QBIT_URL"),
-      username: getRequiredEnv("QBIT_USERNAME"),
-      password: getRequiredEnv("QBIT_PASSWORD"),
+      baseUrl,
+      credentials: {
+        mode: "cookie",
+        username: getRequiredEnv("QBIT_USERNAME"),
+        password: getRequiredEnv("QBIT_PASSWORD"),
+      },
     });
   }
 
+  private authHeaders(): Record<string, string> {
+    if (this.config.credentials.mode === "apikey") {
+      return { Authorization: `Bearer ${this.config.credentials.apiKey}` };
+    }
+    return { Cookie: `SID=${this.sid}` };
+  }
+
+  private async ensureAuth(): Promise<void> {
+    if (this.config.credentials.mode === "apikey") return;
+    if (!this.sid) await this.login();
+  }
+
+  private async handleAuthError(): Promise<void> {
+    if (this.config.credentials.mode === "apikey") {
+      throw new Error("qBittorrent API key rejected (HTTP 403). Check QBIT_API_KEY.");
+    }
+    this.sid = null;
+    await this.login();
+  }
+
   private async login(): Promise<void> {
+    if (this.config.credentials.mode !== "cookie") return;
+    const { username, password } = this.config.credentials;
+
     const res = await fetch(`${this.config.baseUrl}/api/v2/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        username: this.config.username,
-        password: this.config.password,
-      }),
+      body: new URLSearchParams({ username, password }),
     });
 
     const body = await res.text();
@@ -62,16 +99,15 @@ export class QBittorrentClient {
   }
 
   async getTorrentComment(hash: string): Promise<string> {
-    if (!this.sid) await this.login();
+    await this.ensureAuth();
 
     const res = await fetch(
       `${this.config.baseUrl}/api/v2/torrents/properties?hash=${hash.toLowerCase()}`,
-      { headers: { Cookie: `SID=${this.sid}` } },
+      { headers: this.authHeaders() },
     );
 
     if (res.status === 403) {
-      this.sid = null;
-      await this.login();
+      await this.handleAuthError();
       return this.getTorrentComment(hash);
     }
 
@@ -108,15 +144,14 @@ export class QBittorrentClient {
   }
 
   async listTorrents(): Promise<TorrentInfo[]> {
-    if (!this.sid) await this.login();
+    await this.ensureAuth();
 
     const res = await fetch(`${this.config.baseUrl}/api/v2/torrents/info`, {
-      headers: { Cookie: `SID=${this.sid}` },
+      headers: this.authHeaders(),
     });
 
     if (res.status === 403) {
-      this.sid = null;
-      await this.login();
+      await this.handleAuthError();
       return this.listTorrents();
     }
 
