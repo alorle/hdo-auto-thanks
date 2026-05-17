@@ -1,5 +1,6 @@
 import { log } from "./log.js";
 import { getRequiredEnv } from "./config.js";
+import { qbitApiDuration, qbitApiErrors } from "./metrics.js";
 
 const PREFIX = "qbittorrent";
 
@@ -100,6 +101,7 @@ export class QBittorrentClient {
 
   async getTorrentComment(hash: string): Promise<string> {
     await this.ensureAuth();
+    const stopTimer = qbitApiDuration.startTimer({ endpoint: "torrents/properties" });
 
     const res = await fetch(
       `${this.config.baseUrl}/api/v2/torrents/properties?hash=${hash.toLowerCase()}`,
@@ -107,15 +109,19 @@ export class QBittorrentClient {
     );
 
     if (res.status === 403) {
+      stopTimer();
       await this.handleAuthError();
       return this.getTorrentComment(hash);
     }
 
     if (!res.ok) {
+      stopTimer();
+      qbitApiErrors.inc({ endpoint: "torrents/properties" });
       throw new Error(`qBittorrent API error: ${res.status} ${res.statusText}`);
     }
 
     const props = (await res.json()) as TorrentProperties;
+    stopTimer();
     return props.comment;
   }
 
@@ -145,20 +151,26 @@ export class QBittorrentClient {
 
   async listTorrents(): Promise<TorrentInfo[]> {
     await this.ensureAuth();
+    const stopTimer = qbitApiDuration.startTimer({ endpoint: "torrents/info" });
 
     const res = await fetch(`${this.config.baseUrl}/api/v2/torrents/info`, {
       headers: this.authHeaders(),
     });
 
     if (res.status === 403) {
+      stopTimer();
       await this.handleAuthError();
       return this.listTorrents();
     }
 
     if (!res.ok) {
+      stopTimer();
+      qbitApiErrors.inc({ endpoint: "torrents/info" });
       throw new Error(`qBittorrent API error: ${res.status} ${res.statusText}`);
     }
 
-    return (await res.json()) as TorrentInfo[];
+    const result = (await res.json()) as TorrentInfo[];
+    stopTimer();
+    return result;
   }
 }

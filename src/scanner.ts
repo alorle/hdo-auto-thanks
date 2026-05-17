@@ -4,11 +4,13 @@ import { parseTorrentComment } from "./url-parser.js";
 import { getPage, enqueue } from "./browser.js";
 import { thankTorrent } from "./thanks.js";
 import type { QBittorrentClient } from "./qbittorrent.js";
+import { scansCompleted, scanDuration, scanTorrentsProcessed } from "./metrics.js";
 
 const PREFIX = "scanner";
 
 export async function scanAllTorrents(qbClient: QBittorrentClient): Promise<void> {
   log(PREFIX, "Starting torrent scan...");
+  const stopTimer = scanDuration.startTimer();
 
   const torrents = await qbClient.listTorrents();
   log(PREFIX, `Found ${torrents.length} torrent(s) in qBittorrent.`);
@@ -64,6 +66,12 @@ export async function scanAllTorrents(qbClient: QBittorrentClient): Promise<void
       errorCount++;
     }
   }
+
+  scanTorrentsProcessed.set({ result: "thanked" }, thankedCount);
+  scanTorrentsProcessed.set({ result: "skipped" }, skippedCount);
+  scanTorrentsProcessed.set({ result: "error" }, errorCount);
+  scansCompleted.inc({ status: errorCount > 0 ? "partial" : "success" });
+  stopTimer();
 
   log(PREFIX, `Scan complete. Processed: ${thankedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
 }

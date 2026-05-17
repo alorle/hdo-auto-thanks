@@ -8,7 +8,8 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "prom-client": "^15.1.3"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

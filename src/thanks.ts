@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import type { SiteConfig } from "./config.js";
 import { log } from "./log.js";
+import { torrentsThanked, torrentsSkipped, torrentsErrored, thankDuration, logins } from "./metrics.js";
 
 export async function ensureLoggedIn(
   page: Page,
@@ -19,9 +20,11 @@ export async function ensureLoggedIn(
   await page.waitForLoadState("networkidle");
 
   if (page.url().includes("/login")) {
+    logins.inc({ site: site.envPrefix.toLowerCase(), status: "failure" });
     throw new Error(`Login failed. Check your ${site.envPrefix}_USERNAME and ${site.envPrefix}_PASSWORD.`);
   }
 
+  logins.inc({ site: site.envPrefix.toLowerCase(), status: "success" });
   log(logPrefix, "Login successful.");
 }
 
@@ -33,41 +36,52 @@ export async function thankTorrent(
   site: SiteConfig,
   logPrefix: string,
 ): Promise<void> {
-  const url = `${site.baseUrl}/torrents/${torrentId}`;
-  log(logPrefix, `Navigating to torrent ${torrentId}...`);
+  const siteLabel = site.envPrefix.toLowerCase();
+  const stopTimer = thankDuration.startTimer({ site: siteLabel });
 
-  await page.goto(url);
+  try {
+    const url = `${site.baseUrl}/torrents/${torrentId}`;
+    log(logPrefix, `Navigating to torrent ${torrentId}...`);
 
-  if (page.url().includes("/login")) {
-    await ensureLoggedIn(page, username, password, site, logPrefix);
     await page.goto(url);
+
+    if (page.url().includes("/login")) {
+      await ensureLoggedIn(page, username, password, site, logPrefix);
+      await page.goto(url);
+    }
+
+    await page.waitForLoadState("networkidle");
+
+    // @ts-expect-error -- runs in browser context where window.Livewire exists
+    await page.waitForFunction(() => typeof window.Livewire !== "undefined");
+
+    const thanksButton = page
+      .locator(`button[wire\\:click="store(${torrentId})"]`)
+      .filter({ hasText: "Agradecer" });
+    const count = await thanksButton.count();
+
+    if (count === 0) {
+      log(logPrefix, `No thanks button found for torrent ${torrentId}. Skipping.`);
+      torrentsSkipped.inc({ site: siteLabel, reason: "no_button" });
+      return;
+    }
+
+    if (await thanksButton.isDisabled()) {
+      log(logPrefix, `Torrent ${torrentId} already thanked. Skipping.`);
+      torrentsSkipped.inc({ site: siteLabel, reason: "already_thanked" });
+      return;
+    }
+
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => res.url().includes("/livewire")),
+      thanksButton.click(),
+    ]);
+    torrentsThanked.inc({ site: siteLabel });
+    log(logPrefix, `Thanked torrent ${torrentId}. (status: ${response.status()})`);
+  } catch (err) {
+    torrentsErrored.inc({ site: siteLabel });
+    throw err;
+  } finally {
+    stopTimer();
   }
-
-  await page.waitForLoadState("networkidle");
-
-  // Wait for Livewire to be fully initialized
-  // @ts-expect-error -- runs in browser context where window.Livewire exists
-  await page.waitForFunction(() => typeof window.Livewire !== "undefined");
-
-  const thanksButton = page
-    .locator(`button[wire\\:click="store(${torrentId})"]`)
-    .filter({ hasText: "Agradecer" });
-  const count = await thanksButton.count();
-
-  if (count === 0) {
-    log(logPrefix, `No thanks button found for torrent ${torrentId}. Skipping.`);
-    return;
-  }
-
-  if (await thanksButton.isDisabled()) {
-    log(logPrefix, `Torrent ${torrentId} already thanked. Skipping.`);
-    return;
-  }
-
-  // Click and wait for the Livewire XHR to fire and complete
-  const [response] = await Promise.all([
-    page.waitForResponse((res) => res.url().includes("/livewire")),
-    thanksButton.click(),
-  ]);
-  log(logPrefix, `Thanked torrent ${torrentId}. (status: ${response.status()})`);
 }

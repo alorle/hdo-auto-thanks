@@ -5,6 +5,7 @@ import { QBittorrentClient } from "./qbittorrent.js";
 import { parseTorrentComment } from "./url-parser.js";
 import { getPage, enqueue, closeAll } from "./browser.js";
 import { thankTorrent } from "./thanks.js";
+import { registry, webhooksReceived, webhookProcessingDuration } from "./metrics.js";
 
 const PREFIX = "webhook";
 
@@ -56,6 +57,8 @@ async function handleWebhook(
     return;
   }
 
+  webhooksReceived.inc({ source, event_type: payload.eventType ?? "unknown" });
+
   if (payload.eventType !== "Grab") {
     log(PREFIX, `[${source}] Ignoring event: ${payload.eventType ?? "unknown"}`);
     jsonResponse(res, 200, { status: "ignored", reason: `Event type "${payload.eventType}" is not "Grab".` });
@@ -86,18 +89,22 @@ async function processGrab(
   title: string,
   qbClient: QBittorrentClient,
 ): Promise<void> {
+  const stopTimer = webhookProcessingDuration.startTimer({ source });
+
   log(PREFIX, `[${source}] Querying qBittorrent for torrent comment (hash: ${hash})...`);
   const comment = await qbClient.getTorrentCommentWithRetry(hash);
 
   const parsed = parseTorrentComment(comment);
   if (!parsed) {
     log(PREFIX, `[${source}] No matching site URL in comment: "${comment}". Skipping.`);
+    stopTimer({ site: "unknown" });
     return;
   }
 
   const site = SITES[parsed.siteKey];
   if (!site) {
     log(PREFIX, `[${source}] Unknown site key "${parsed.siteKey}". Skipping.`);
+    stopTimer({ site: "unknown" });
     return;
   }
 
@@ -108,6 +115,7 @@ async function processGrab(
     credentials = getSiteCredentials(site);
   } catch (err) {
     log(PREFIX, `[${source}] Missing credentials for ${site.name}: ${err}`);
+    stopTimer({ site: parsed.siteKey });
     return;
   }
 
@@ -117,6 +125,7 @@ async function processGrab(
     await thankTorrent(page, parsed.torrentId, credentials.username, credentials.password, site, logPrefix);
   });
 
+  stopTimer({ site: parsed.siteKey });
   log(PREFIX, `[${source}] Done processing "${title}".`);
 }
 
@@ -124,6 +133,16 @@ export async function startServer(port: number): Promise<void> {
   const qbClient = QBittorrentClient.fromEnv();
 
   const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/metrics") {
+      registry.metrics().then((metrics) => {
+        res.writeHead(200, { "Content-Type": registry.contentType });
+        res.end(metrics);
+      }).catch((err) => {
+        log(PREFIX, `Error generating metrics: ${err}`);
+        jsonResponse(res, 500, { error: "Failed to generate metrics." });
+      });
+      return;
+    }
     if (req.method === "GET" && req.url === "/health") {
       jsonResponse(res, 200, { status: "healthy" });
       return;
@@ -156,6 +175,6 @@ export async function startServer(port: number): Promise<void> {
 
   server.listen(port, () => {
     log(PREFIX, `Listening on port ${port}`);
-    log(PREFIX, "Endpoints: POST /webhook/radarr, POST /webhook/sonarr, GET /health");
+    log(PREFIX, "Endpoints: POST /webhook/radarr, POST /webhook/sonarr, GET /health, GET /metrics");
   });
 }
